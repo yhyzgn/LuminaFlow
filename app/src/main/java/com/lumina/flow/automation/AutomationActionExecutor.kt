@@ -7,6 +7,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -14,6 +15,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
+import com.lumina.flow.accessibility.AccessibilityAutomationBridge
 import com.lumina.flow.R
 import com.lumina.flow.data.AutomationEntity
 import com.lumina.flow.model.ActionType
@@ -91,12 +93,26 @@ class AutomationActionExecutor @Inject constructor(
                 logger?.invoke("已尝试启动应用: ${action.target}")
             }
             ActionType.GO_HOME -> {
-                goHome()
-                logger?.invoke("已回到桌面")
+                val success = if (AccessibilityAutomationBridge.isEnabled()) {
+                    logger?.invoke("无障碍 HOME 已启用，执行全局返回桌面")
+                    AccessibilityAutomationBridge.goHome()
+                } else {
+                    logger?.invoke("无障碍未启用，回退到普通版回桌面")
+                    goHome()
+                    true
+                }
+                logger?.invoke(if (success) "已回到桌面" else "回到桌面失败")
             }
             ActionType.CLOSE_APP -> {
-                closeApp(action.target)
-                logger?.invoke("已尝试关闭应用后台进程: ${action.target}")
+                val success = if (AccessibilityAutomationBridge.isEnabled()) {
+                    logger?.invoke("无障碍已启用，尝试强行停止应用: ${action.target}")
+                    AccessibilityAutomationBridge.forceStopPackage(action.target)
+                } else {
+                    logger?.invoke("无障碍未启用，回退到普通版关闭后台进程")
+                    closeApp(action.target)
+                    true
+                }
+                logger?.invoke(if (success) "关闭应用动作执行完成" else "关闭应用失败，请检查无障碍权限")
             }
             ActionType.RANDOM_DELAY -> {
                 randomDelay(action, logger)
@@ -164,17 +180,45 @@ class AutomationActionExecutor @Inject constructor(
     }
 
     private fun goHome() {
+        runCatching {
+            context.sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+        }
+
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         }
-        context.startActivity(intent)
+
+        val launcherIntent = resolveHomeIntent(intent) ?: intent
+        context.startActivity(launcherIntent)
     }
 
     private fun closeApp(packageName: String) {
         if (packageName.isBlank()) return
         val activityManager = context.getSystemService<ActivityManager>() ?: return
         activityManager.killBackgroundProcesses(packageName)
+    }
+
+    private fun resolveHomeIntent(fallback: Intent): Intent? {
+        val packageManager = context.packageManager
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.resolveActivity(
+                fallback,
+                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.resolveActivity(fallback, PackageManager.MATCH_DEFAULT_ONLY)
+        } ?: return null
+
+        val activityInfo = resolved.activityInfo ?: return null
+        if (activityInfo.packageName == "android") return fallback
+
+        return Intent(fallback).apply {
+            setClassName(activityInfo.packageName, activityInfo.name)
+        }
     }
 
     private suspend fun randomDelay(

@@ -9,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -311,7 +312,8 @@ fun AddAutomationSheet(
                         action = action,
                         onChange = { updated -> actions[index] = updated },
                         onDelete = { if (actions.size > 1) actions.removeAt(index) },
-                        onPickApp = { appPickerTargetId = action.id }
+                        onPickApp = { appPickerTargetId = action.id },
+                        onOpenAccessibilitySettings = { openAccessibilitySettings(context) }
                     )
                 }
                 OutlinedButton(onClick = { showAddAction = true }) {
@@ -499,7 +501,8 @@ private fun ActionEditorCard(
     action: EditableAction,
     onChange: (EditableAction) -> Unit,
     onDelete: () -> Unit,
-    onPickApp: () -> Unit
+    onPickApp: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     Card {
@@ -581,10 +584,13 @@ private fun ActionEditorCard(
 
                 ActionType.GO_HOME -> {
                     Text(
-                        "立即切回系统桌面。",
+                        "启用无障碍后会执行真正的全局 HOME。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    OutlinedButton(onClick = onOpenAccessibilitySettings) {
+                        Text("打开无障碍设置")
+                    }
                 }
 
                 ActionType.CLOSE_APP -> {
@@ -599,10 +605,13 @@ private fun ActionEditorCard(
                         Text("选择要关闭的应用")
                     }
                     Text(
-                        "当前为“尽力关闭后台进程”语义，是否完全结束由 Android 系统决定。",
+                        "启用无障碍后会自动进入应用信息页并点击“强行停止”。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    OutlinedButton(onClick = onOpenAccessibilitySettings) {
+                        Text("打开无障碍设置")
+                    }
                 }
 
                 ActionType.RANDOM_DELAY -> {
@@ -921,6 +930,12 @@ private fun rememberAppSelection(context: Context, packageName: String) {
         .putString("recent_packages", trimmedRecent.joinToString("|"))
         .putString("usage_counts", counts.entries.joinToString("|") { entry -> "${entry.key}=${entry.value}" })
         .apply()
+}
+
+private fun openAccessibilitySettings(context: Context) {
+    context.startActivity(
+        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
 }
 
 private fun Drawable.toPainter(): Painter {

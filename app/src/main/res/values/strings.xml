@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LuminaFlow</string>
+    <string name="accessibility_service_description">为回到桌面和关闭应用提供无障碍自动化能力</string>
 </resources>
