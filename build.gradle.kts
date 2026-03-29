@@ -1,0 +1,1 @@
+// 项目级 build.gradle.kts（Gradle 9.x 推荐写法：仅引用 catalog，无需额外插件）
