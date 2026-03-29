@@ -17,7 +17,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AutomationDatabase =
-        Room.databaseBuilder(context, AutomationDatabase::class.java, "lumina_flow.db").build()
+        Room.databaseBuilder(context, AutomationDatabase::class.java, "lumina_flow.db")
+            .fallbackToDestructiveMigration(true)
+            .build()
 
     @Provides
     @Singleton
