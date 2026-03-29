@@ -38,6 +38,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)   // 推荐添加，包含更多图标
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -46,6 +49,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.work)
     ksp(libs.hilt.compiler)                    // kapt 配置
     implementation(libs.hilt.navigation.compose)
 

@@ -1,4 +1,4 @@
-package com.neo.luminaflow
+package com.lumina.flow
 
 import org.junit.Test
 
