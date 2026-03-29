@@ -1,19 +1,20 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.kapt)      // ← 正确使用 alias
+//    alias(libs.plugins.kotlin.android)
+//    alias(libs.plugins.kotlin.kapt)      // ← 正确使用 alias
+    alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.hilt)
 }
 
 android {
     namespace = "com.lumina.flow"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.lumina.flow"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 2
         versionName = "2.0"
     }
@@ -40,12 +41,12 @@ dependencies {
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    kapt(libs.androidx.room.compiler)           // kapt 配置
+    ksp(libs.androidx.room.compiler)           // kapt 配置
 
     implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)                    // kapt 配置
+    ksp(libs.hilt.compiler)                    // kapt 配置
     implementation(libs.hilt.navigation.compose)
 
     implementation(libs.play.services.location)
