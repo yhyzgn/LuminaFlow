@@ -3,6 +3,7 @@ package com.lumina.flow.automation
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.ActivityManager
+import android.media.AudioAttributes
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -123,8 +124,11 @@ class AutomationActionExecutor @Inject constructor(
                 logger?.invoke("已复制文本到剪贴板")
             }
             ActionType.VIBRATE -> {
-                vibrate(action.durationMs)
-                logger?.invoke("已振动 ${action.durationMs} ms")
+                val vibrated = vibrate(action.durationMs)
+                logger?.invoke(
+                    if (vibrated) "已振动 ${action.durationMs} ms"
+                    else "设备未执行振动，可能没有振动器或被系统限制"
+                )
             }
         }
     }
@@ -180,10 +184,6 @@ class AutomationActionExecutor @Inject constructor(
     }
 
     private fun goHome() {
-        runCatching {
-            context.sendBroadcast(Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
-        }
-
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             addCategory(Intent.CATEGORY_DEFAULT)
@@ -244,15 +244,46 @@ class AutomationActionExecutor @Inject constructor(
         clipboard.setPrimaryClip(ClipData.newPlainText("LuminaFlow", text))
     }
 
-    private fun vibrate(durationMs: Long) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService<VibratorManager>() ?: return
-            vibratorManager.defaultVibrator.vibrate(
-                VibrationEffect.createOneShot(durationMs.coerceAtLeast(100L), VibrationEffect.DEFAULT_AMPLITUDE)
-            )
+    private fun vibrate(durationMs: Long): Boolean {
+        val vibrator = resolveVibrator() ?: return false
+        if (!vibrator.hasVibrator()) return false
+
+        val safeDuration = durationMs.coerceIn(120L, 5_000L)
+        val effect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            VibrationEffect.createOneShot(safeDuration, 180)
+        } else {
+            null
+        }
+
+        return runCatching {
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && effect != null -> {
+                    val vibrationAttributes = android.os.VibrationAttributes.createForUsage(
+                        android.os.VibrationAttributes.USAGE_ALARM
+                    )
+                    vibrator.vibrate(effect, vibrationAttributes)
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && effect != null -> {
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(effect, audioAttributes)
+                }
+                else -> {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(safeDuration)
+                }
+            }
+        }.isSuccess
+    }
+
+    private fun resolveVibrator(): Vibrator? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService<VibratorManager>()?.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
-            context.getSystemService<Vibrator>()?.vibrate(durationMs.coerceAtLeast(100L))
+            context.getSystemService<Vibrator>()
         }
     }
 

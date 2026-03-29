@@ -68,4 +68,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.okhttp.jvm)
     implementation(libs.snakeyaml)
+
+    testImplementation(libs.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
 }
