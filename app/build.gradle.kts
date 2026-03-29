@@ -26,6 +26,17 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.7.0"
     }
+
+    // ==================== 修复 OkHttp 5.3.2 重复文件 ====================
+    packaging {
+        resources {
+            pickFirsts.add("META-INF/kotlin-project-structure-metadata.json")
+            // 如果以后还有其他 META-INF 冲突，可以继续添加 pickFirsts
+            pickFirsts.add("META-INF/DEPENDENCIES")
+            pickFirsts.add("META-INF/LICENSE*")
+            pickFirsts.add("META-INF/NOTICE*")
+        }
+    }
 }
 
 dependencies {
@@ -55,5 +66,6 @@ dependencies {
 
     implementation(libs.play.services.location)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.jvm)
     implementation(libs.snakeyaml)
 }
