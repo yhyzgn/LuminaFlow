@@ -40,5 +40,6 @@ data class AutomationActionConfig(
 data class AutomationConditions(
     val requireCharging: Boolean = false,
     val wifiOnly: Boolean = false,
-    val minimumBattery: Int? = null
+    val minimumBattery: Int? = null,
+    val strictExactTime: Boolean = false
 )

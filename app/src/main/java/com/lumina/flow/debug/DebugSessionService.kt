@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.lumina.flow.R
@@ -25,6 +26,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class DebugSessionService : Service() {
+    private val tag = "LuminaFlowDebug"
 
     @Inject
     lateinit var executor: AutomationActionExecutor
@@ -43,6 +45,7 @@ class DebugSessionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(tag, "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             ACTION_STOP -> stopDebug("调试已停止")
             ACTION_START -> startDebug(intent)
@@ -64,6 +67,7 @@ class DebugSessionService : Service() {
 
         debugJob?.cancel()
         repository.start(payload.title)
+        Log.d(tag, "startDebug title=${payload.title}")
         startForegroundCompat(buildNotification(payload.title, "正在准备调试"))
 
         debugJob = serviceScope.launch {
@@ -139,11 +143,11 @@ class DebugSessionService : Service() {
     }
 
     private fun startForegroundCompat(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)

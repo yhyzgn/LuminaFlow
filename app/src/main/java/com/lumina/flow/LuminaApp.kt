@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.WorkManager
 import com.lumina.flow.automation.AutomationPlanner
 import com.lumina.flow.automation.AutomationScheduler
 import com.lumina.flow.data.AutomationDao
@@ -32,6 +33,9 @@ class LuminaFlowApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        runCatching {
+            WorkManager.initialize(this, workManagerConfiguration)
+        }
         createChannels()
         applicationScope.launch {
             dao.getEnabled().forEach { entity ->

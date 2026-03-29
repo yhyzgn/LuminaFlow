@@ -147,6 +147,7 @@ fun AddAutomationSheet(
     var requireCharging by rememberSaveable(entity?.id) { mutableStateOf(conditions.requireCharging) }
     var wifiOnly by rememberSaveable(entity?.id) { mutableStateOf(conditions.wifiOnly) }
     var minimumBattery by rememberSaveable(entity?.id) { mutableStateOf(conditions.minimumBattery?.toString() ?: "") }
+    var strictExactTime by rememberSaveable(entity?.id) { mutableStateOf(conditions.strictExactTime) }
 
     val selectedDays = remember(entity?.id) {
         mutableStateListOf<Int>().apply {
@@ -264,6 +265,14 @@ fun AddAutomationSheet(
                         SwitchRow("在截止时间前循环执行动作序列", repeatUntilWindowEnd) {
                             repeatUntilWindowEnd = it
                         }
+                        SwitchRow("严格准点模式（系统闹钟）", strictExactTime) {
+                            strictExactTime = it
+                        }
+                        Text(
+                            "开启后会使用系统闹钟触发，通常更准时，但系统可能显示闹钟提醒或相关状态。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         if (repeatUntilWindowEnd) {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 NumberField("截止小时", windowEndHour.toString(), "0-23", { value ->
@@ -367,6 +376,8 @@ fun AddAutomationSheet(
                             requireCharging = requireCharging,
                             wifiOnly = wifiOnly,
                             minimumBattery = minimumBattery
+                            ,
+                            strictExactTime = strictExactTime
                         )
                         error = when {
                             built == null -> "请先补全配置后再试运行"
@@ -402,6 +413,8 @@ fun AddAutomationSheet(
                             requireCharging = requireCharging,
                             wifiOnly = wifiOnly,
                             minimumBattery = minimumBattery
+                            ,
+                            strictExactTime = strictExactTime
                         )
                         error = when {
                             built == null -> "请补全当前触发器需要的关键字段"
@@ -970,7 +983,8 @@ private fun buildEntity(
     actions: List<EditableAction>,
     requireCharging: Boolean,
     wifiOnly: Boolean,
-    minimumBattery: String
+    minimumBattery: String,
+    strictExactTime: Boolean
 ): AutomationEntity? {
     if (name.isBlank()) return null
 
@@ -1018,7 +1032,8 @@ private fun buildEntity(
             AutomationConditions(
                 requireCharging = requireCharging,
                 wifiOnly = wifiOnly,
-                minimumBattery = minimumBattery.toIntOrNull()
+                minimumBattery = minimumBattery.toIntOrNull(),
+                strictExactTime = triggerType == TriggerType.TIME && strictExactTime
             )
         ),
         lastRunAt = original?.lastRunAt,

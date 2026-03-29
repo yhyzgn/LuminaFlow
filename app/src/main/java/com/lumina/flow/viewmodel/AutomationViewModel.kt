@@ -147,7 +147,8 @@ class AutomationViewModel @Inject constructor(
                         val conditions = AutomationConditions(
                             requireCharging = conditionsMap?.get("requireCharging") as? Boolean ?: false,
                             wifiOnly = conditionsMap?.get("wifiOnly") as? Boolean ?: false,
-                            minimumBattery = (conditionsMap?.get("minimumBattery") as? Number)?.toInt()
+                            minimumBattery = (conditionsMap?.get("minimumBattery") as? Number)?.toInt(),
+                            strictExactTime = conditionsMap?.get("strictExactTime") as? Boolean ?: false
                         )
 
                         val entity = AutomationEntity(
@@ -222,7 +223,8 @@ class AutomationViewModel @Inject constructor(
                             mapOf(
                                 "requireCharging" to conditions.requireCharging,
                                 "wifiOnly" to conditions.wifiOnly,
-                                "minimumBattery" to conditions.minimumBattery
+                                "minimumBattery" to conditions.minimumBattery,
+                                "strictExactTime" to conditions.strictExactTime
                             )
                         }
                     )

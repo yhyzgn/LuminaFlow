@@ -1,5 +1,10 @@
 package com.lumina.flow.ui
 
+import android.app.AlarmManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +55,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +72,7 @@ import com.lumina.flow.model.AutomationConditions
 import com.lumina.flow.model.DebugSessionState
 import com.lumina.flow.model.TriggerType
 import com.lumina.flow.viewmodel.AutomationViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -74,7 +81,9 @@ import java.util.Locale
 fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
     val automations by viewModel.automations.collectAsState()
     val debugState by viewModel.debugState.collectAsState()
+    val now by rememberTickerTime()
     val context = LocalContext.current
+    val exactAlarmGranted by rememberExactAlarmAccess()
     var editing by remember { mutableStateOf<AutomationEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
@@ -129,7 +138,7 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item { Dashboard(automations) }
+            item { Dashboard(automations, exactAlarmGranted) }
             item {
                 TemplateSection { entity ->
                     editing = entity
@@ -142,6 +151,7 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
                 items(automations, key = { it.id }) { item ->
                     AutomationCard(
                         entity = item,
+                        now = now,
                         onToggle = { enabled -> viewModel.toggleEnabled(item, enabled) },
                         onRunNow = { viewModel.runNow(item, ::toast) },
                         onEdit = {
@@ -214,10 +224,14 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun Dashboard(automations: List<AutomationEntity>) {
+private fun Dashboard(automations: List<AutomationEntity>, exactAlarmGranted: Boolean) {
+    val context = LocalContext.current
     val enabledCount = automations.count { it.enabled }
     val scheduledCount = automations.count { it.enabled && it.nextRunAt != null }
     val actionCount = automations.sumOf { AutomationJsonCodec.decodeActions(it.actionsJson).size }
+    val needsExactAlarm = automations.any {
+        it.enabled && TriggerType.fromValue(it.triggerType) != TriggerType.LOCATION
+    }
 
     ElevatedCard(
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -240,6 +254,34 @@ private fun Dashboard(automations: List<AutomationEntity>) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
             )
+            if (needsExactAlarm && !exactAlarmGranted) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("系统未授予精确闹钟，定时任务可能明显延后。", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text("打开精确闹钟设置")
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -356,6 +398,7 @@ private fun TemplateSection(onUseTemplate: (AutomationEntity) -> Unit) {
 @Composable
 private fun AutomationCard(
     entity: AutomationEntity,
+    now: Long,
     onToggle: (Boolean) -> Unit,
     onRunNow: () -> Unit,
     onEdit: () -> Unit,
@@ -397,7 +440,7 @@ private fun AutomationCard(
                 }
             }
 
-            InfoLine("下次执行", entity.nextRunAt?.let(::formatDateTime) ?: missingScheduleLabel(entity))
+            InfoLine("下次执行", nextRunLabel(entity, now))
             InfoLine("最近结果", entity.lastResult)
             InfoLine("条件", conditionLabel(entity.conditionsJson))
 
@@ -551,6 +594,7 @@ private fun conditionLabel(raw: String): String {
         if (conditions.requireCharging) add("充电中")
         if (conditions.wifiOnly) add("仅 Wi-Fi")
         conditions.minimumBattery?.let { add("电量 >= $it%") }
+        if (conditions.strictExactTime) add("严格准点")
     }
     return if (items.isEmpty()) "无附加条件" else items.joinToString(" / ")
 }
@@ -564,6 +608,37 @@ private fun missingScheduleLabel(entity: AutomationEntity): String =
 
 private fun formatDateTime(timestamp: Long): String =
     SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(timestamp)
+
+@Composable
+private fun rememberTickerTime(stepMs: Long = 15_000L) = produceState(System.currentTimeMillis()) {
+    while (true) {
+        value = System.currentTimeMillis()
+        delay(stepMs)
+    }
+}
+
+@Composable
+private fun rememberExactAlarmAccess(): androidx.compose.runtime.State<Boolean> {
+    val context = LocalContext.current
+    return produceState(initialValue = true, context) {
+        while (true) {
+            val manager = context.getSystemService(AlarmManager::class.java)
+            value = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager?.canScheduleExactAlarms() == true
+            delay(15_000L)
+        }
+    }
+}
+
+private fun nextRunLabel(entity: AutomationEntity, now: Long): String {
+    val nextRunAt = entity.nextRunAt ?: return missingScheduleLabel(entity)
+    val base = formatDateTime(nextRunAt)
+    val delta = nextRunAt - now
+    return when {
+        delta < 0 -> "$base (已到期，等待系统触发)"
+        delta < 60_000L -> "$base (1 分钟内)"
+        else -> "$base (${delta / 60_000L} 分钟后)"
+    }
+}
 
 private fun daysLabel(days: Set<Int>): String = when (days.sorted()) {
     listOf(2, 3, 4, 5, 6) -> "工作日"

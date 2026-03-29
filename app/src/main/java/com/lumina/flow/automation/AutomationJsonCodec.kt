@@ -54,7 +54,8 @@ object AutomationJsonCodec {
             AutomationConditions(
                 requireCharging = json.optBoolean("requireCharging"),
                 wifiOnly = json.optBoolean("wifiOnly"),
-                minimumBattery = json.optInt("minimumBattery").takeIf { it > 0 }
+                minimumBattery = json.optInt("minimumBattery").takeIf { it > 0 },
+                strictExactTime = json.optBoolean("strictExactTime")
             )
         }.getOrDefault(AutomationConditions())
     }
@@ -64,5 +65,6 @@ object AutomationJsonCodec {
             .put("requireCharging", conditions.requireCharging)
             .put("wifiOnly", conditions.wifiOnly)
             .put("minimumBattery", conditions.minimumBattery)
+            .put("strictExactTime", conditions.strictExactTime)
             .toString()
 }
