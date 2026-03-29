@@ -3,11 +3,13 @@ package com.lumina.flow.ui
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -35,9 +36,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -98,7 +101,15 @@ private data class EditableAction(
 private data class LaunchableApp(
     val label: String,
     val packageName: String,
-    val icon: Drawable?
+    val icon: Drawable?,
+    val isSystemApp: Boolean = false,
+    val useCount: Int = 0,
+    val recentOrder: Int? = null
+)
+
+private data class AppPickerUiState(
+    val loading: Boolean = true,
+    val apps: List<LaunchableApp> = emptyList()
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -106,7 +117,8 @@ private data class LaunchableApp(
 fun AddAutomationSheet(
     entity: AutomationEntity?,
     onSave: (AutomationEntity) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onTestRun: (AutomationEntity) -> Unit
 ) {
     val context = LocalContext.current
     val conditions = remember(entity?.id) {
@@ -331,6 +343,41 @@ fun AddAutomationSheet(
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                     Text("取消")
                 }
+                OutlinedButton(
+                    onClick = {
+                        val built = buildEntity(
+                            original = entity,
+                            name = name,
+                            description = description,
+                            enabled = enabled,
+                            triggerType = triggerType,
+                            hour = hour,
+                            minute = minute,
+                            repeatUntilWindowEnd = repeatUntilWindowEnd,
+                            windowEndHour = windowEndHour,
+                            windowEndMinute = windowEndMinute,
+                            intervalMinutes = intervalMinutes,
+                            selectedDays = selectedDays.toSet(),
+                            latitude = latitude,
+                            longitude = longitude,
+                            radius = radius,
+                            actions = actions,
+                            requireCharging = requireCharging,
+                            wifiOnly = wifiOnly,
+                            minimumBattery = minimumBattery
+                        )
+                        error = when {
+                            built == null -> "请先补全配置后再试运行"
+                            repeatUntilWindowEnd && actions.none { it.type == ActionType.RANDOM_DELAY } ->
+                                "循环任务至少加一个随机延迟动作，避免无间隔高速循环"
+                            else -> null
+                        }
+                        if (error == null && built != null) onTestRun(built)
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("立即试运行")
+                }
                 Button(
                     onClick = {
                         val built = buildEntity(
@@ -404,6 +451,7 @@ fun AddAutomationSheet(
                 if (index >= 0) {
                     actions[index] = actions[index].copy(target = app.packageName)
                 }
+                rememberAppSelection(context, app.packageName)
                 appPickerTargetId = null
             }
         )
@@ -589,9 +637,11 @@ private fun AppPickerDialog(
     onPick: (LaunchableApp) -> Unit
 ) {
     var keyword by remember { mutableStateOf("") }
-    val apps by produceState(initialValue = emptyList<LaunchableApp>(), context) {
-        value = loadLaunchableApps(context)
+    val pickerState by produceState(initialValue = AppPickerUiState(), context) {
+        value = AppPickerUiState(loading = true)
+        value = AppPickerUiState(loading = false, apps = loadLaunchableApps(context))
     }
+    val apps = pickerState.apps
     val filtered = remember(apps, keyword) {
         if (keyword.isBlank()) {
             apps
@@ -602,6 +652,7 @@ private fun AppPickerDialog(
             }
         }
     }
+    val recentApps = remember(apps) { apps.filter { it.recentOrder != null }.take(6) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -625,19 +676,55 @@ private fun AppPickerDialog(
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true
                 )
-                Text(
-                    "找到 ${filtered.size} 个可启动应用",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filtered, key = { it.packageName }) { app ->
-                        AppListItem(app = app, onClick = { onPick(app) })
+                if (pickerState.loading) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 220.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.size(12.dp))
+                        Text(
+                            "正在读取可启动应用列表…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    if (recentApps.isNotEmpty()) {
+                        Text(
+                            "最近选择",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            recentApps.forEach { app ->
+                                AssistChip(
+                                    onClick = { onPick(app) },
+                                    label = { Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "找到 ${filtered.size} 个可启动应用",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(filtered, key = { it.packageName }) { app ->
+                            AppListItem(app = app, onClick = { onPick(app) })
+                        }
                     }
                 }
             }
@@ -700,8 +787,36 @@ private fun AppListItem(app: LaunchableApp, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (app.recentOrder != null) {
+                        AppTag("最近", MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    if (app.useCount >= 2) {
+                        AppTag("常用", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    AppTag(
+                        if (app.isSystemApp) "系统应用" else "用户应用",
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun AppTag(label: String, containerColor: androidx.compose.ui.graphics.Color, textColor: androidx.compose.ui.graphics.Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(containerColor)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(label, color = textColor, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -718,6 +833,19 @@ private fun defaultActionForType(id: Int, type: ActionType): EditableAction =
 
 private fun loadLaunchableApps(context: Context): List<LaunchableApp> {
     val packageManager = context.packageManager
+    val prefs = context.getSharedPreferences("lumina_flow_app_picker", Context.MODE_PRIVATE)
+    val recentPackages = prefs.getString("recent_packages", "").orEmpty()
+        .split('|')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    val recentOrderMap = recentPackages.withIndex().associate { it.value to it.index }
+    val useCountMap = prefs.getString("usage_counts", "").orEmpty()
+        .split('|')
+        .mapNotNull {
+            val parts = it.split('=')
+            if (parts.size == 2) parts[0] to (parts[1].toIntOrNull() ?: 0) else null
+        }
+        .toMap()
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         packageManager.queryIntentActivities(
@@ -736,11 +864,45 @@ private fun loadLaunchableApps(context: Context): List<LaunchableApp> {
             LaunchableApp(
                 label = label.ifBlank { packageName },
                 packageName = packageName,
-                icon = runCatching { info.loadIcon(packageManager) }.getOrNull()
+                icon = runCatching { info.loadIcon(packageManager) }.getOrNull(),
+                isSystemApp = (info.activityInfo?.applicationInfo?.flags?.and(ApplicationInfo.FLAG_SYSTEM) ?: 0) != 0,
+                useCount = useCountMap[packageName] ?: 0,
+                recentOrder = recentOrderMap[packageName]
             )
         }
         .distinctBy { it.packageName }
-        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, LaunchableApp::label))
+        .sortedWith(
+            compareBy<LaunchableApp> { it.recentOrder ?: Int.MAX_VALUE }
+                .thenByDescending { it.useCount }
+                .thenBy { it.isSystemApp }
+                .thenBy(String.CASE_INSENSITIVE_ORDER, LaunchableApp::label)
+        )
+}
+
+private fun rememberAppSelection(context: Context, packageName: String) {
+    val prefs = context.getSharedPreferences("lumina_flow_app_picker", Context.MODE_PRIVATE)
+    val recent = prefs.getString("recent_packages", "").orEmpty()
+        .split('|')
+        .map { it.trim() }
+        .filter { it.isNotBlank() && it != packageName }
+        .toMutableList()
+    recent.add(0, packageName)
+    val trimmedRecent = recent.take(8)
+
+    val counts = prefs.getString("usage_counts", "").orEmpty()
+        .split('|')
+        .mapNotNull {
+            val parts = it.split('=')
+            if (parts.size == 2) parts[0] to (parts[1].toIntOrNull() ?: 0) else null
+        }
+        .associate { pair -> pair }
+        .toMutableMap()
+    counts[packageName] = (counts[packageName] ?: 0) + 1
+
+    prefs.edit()
+        .putString("recent_packages", trimmedRecent.joinToString("|"))
+        .putString("usage_counts", counts.entries.joinToString("|") { entry -> "${entry.key}=${entry.value}" })
+        .apply()
 }
 
 private fun Drawable.toPainter(): Painter {

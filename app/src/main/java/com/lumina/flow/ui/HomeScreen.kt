@@ -161,6 +161,9 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
                     toast(message)
                     showEditor = false
                 }
+            },
+            onTestRun = { entity ->
+                viewModel.testRunDraft(entity, ::toast)
             }
         )
     }

@@ -79,6 +79,21 @@ class AutomationViewModel @Inject constructor(
         }
     }
 
+    fun testRunDraft(entity: AutomationEntity, onComplete: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val prepared = entity.copy(
+                enabled = false,
+                updatedAt = now,
+                lastResult = "试运行中"
+            )
+            val id = dao.upsert(prepared)
+            val saved = prepared.copy(id = if (prepared.id == 0L) id else prepared.id)
+            scheduler.enqueueImmediate(saved.id)
+            onComplete("已立即试运行当前配置")
+        }
+    }
+
     fun delete(entity: AutomationEntity) {
         viewModelScope.launch {
             scheduler.cancel(entity.id)
