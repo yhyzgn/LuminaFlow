@@ -579,9 +579,27 @@ private fun ActionEditorCard(
                     }
                 }
 
-                ActionType.CLOSE_APP -> {
+                ActionType.GO_HOME -> {
                     Text(
-                        "当前实现为退回桌面，避免伪造“强杀应用”能力。",
+                        "立即切回系统桌面。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                ActionType.CLOSE_APP -> {
+                    OutlinedTextField(
+                        value = action.target,
+                        onValueChange = { onChange(action.copy(target = it)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("目标应用包名") },
+                        placeholder = { Text("com.tencent.mm") }
+                    )
+                    OutlinedButton(onClick = onPickApp) {
+                        Text("选择要关闭的应用")
+                    }
+                    Text(
+                        "当前为“尽力关闭后台进程”语义，是否完全结束由 Android 系统决定。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

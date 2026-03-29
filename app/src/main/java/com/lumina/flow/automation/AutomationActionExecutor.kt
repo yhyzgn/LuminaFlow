@@ -2,6 +2,7 @@ package com.lumina.flow.automation
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -89,9 +90,13 @@ class AutomationActionExecutor @Inject constructor(
                 openApp(action.target)
                 logger?.invoke("已尝试启动应用: ${action.target}")
             }
-            ActionType.CLOSE_APP -> {
+            ActionType.GO_HOME -> {
                 goHome()
-                logger?.invoke("已退回桌面")
+                logger?.invoke("已回到桌面")
+            }
+            ActionType.CLOSE_APP -> {
+                closeApp(action.target)
+                logger?.invoke("已尝试关闭应用后台进程: ${action.target}")
             }
             ActionType.RANDOM_DELAY -> {
                 randomDelay(action, logger)
@@ -164,6 +169,12 @@ class AutomationActionExecutor @Inject constructor(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
+    }
+
+    private fun closeApp(packageName: String) {
+        if (packageName.isBlank()) return
+        val activityManager = context.getSystemService<ActivityManager>() ?: return
+        activityManager.killBackgroundProcesses(packageName)
     }
 
     private suspend fun randomDelay(

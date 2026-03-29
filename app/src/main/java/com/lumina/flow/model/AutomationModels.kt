@@ -15,7 +15,8 @@ enum class ActionType(val value: String, val label: String) {
     NOTIFICATION("NOTIFICATION", "通知"),
     OPEN_URL("OPEN_URL", "打开链接"),
     OPEN_APP("OPEN_APP", "启动应用"),
-    CLOSE_APP("CLOSE_APP", "关闭应用到桌面"),
+    GO_HOME("GO_HOME", "回到桌面"),
+    CLOSE_APP("CLOSE_APP", "关闭应用"),
     RANDOM_DELAY("RANDOM_DELAY", "随机延迟"),
     CLIPBOARD("CLIPBOARD", "复制文本"),
     VIBRATE("VIBRATE", "振动");
