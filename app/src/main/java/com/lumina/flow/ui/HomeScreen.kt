@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,11 +25,13 @@ import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -44,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +63,7 @@ import com.lumina.flow.data.AutomationEntity
 import com.lumina.flow.model.ActionType
 import com.lumina.flow.model.AutomationActionConfig
 import com.lumina.flow.model.AutomationConditions
+import com.lumina.flow.model.DebugSessionState
 import com.lumina.flow.model.TriggerType
 import com.lumina.flow.viewmodel.AutomationViewModel
 import java.text.SimpleDateFormat
@@ -68,6 +73,7 @@ import java.util.Locale
 @Composable
 fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
     val automations by viewModel.automations.collectAsState()
+    val debugState by viewModel.debugState.collectAsState()
     val context = LocalContext.current
     var editing by remember { mutableStateOf<AutomationEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
@@ -163,7 +169,7 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
                 }
             },
             onTestRun = { entity ->
-                viewModel.testRunDraft(entity, ::toast)
+                viewModel.startDebug(entity)
             }
         )
     }
@@ -195,6 +201,14 @@ fun HomeScreen(viewModel: AutomationViewModel = hiltViewModel()) {
                 )
             },
             confirmButton = { TextButton(onClick = { exportContent = null }) { Text("关闭") } }
+        )
+    }
+
+    if (debugState.visible) {
+        DebugConsoleDialog(
+            state = debugState,
+            onClose = { viewModel.dismissDebug() },
+            onStop = { viewModel.stopDebug() }
         )
     }
 }
@@ -432,6 +446,91 @@ private fun EmptyState() {
             }
         }
     }
+}
+
+@Composable
+private fun DebugConsoleDialog(
+    state: DebugSessionState,
+    onClose: () -> Unit,
+    onStop: () -> Unit
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.logs.size) {
+        if (state.logs.isNotEmpty()) {
+            listState.animateScrollToItem(state.logs.lastIndex)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("调试控制台")
+                Text(
+                    state.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (state.running) {
+                        CircularProgressIndicator(modifier = Modifier.height(18.dp), strokeWidth = 2.dp)
+                    }
+                    Text(
+                        if (state.running) "调试执行中" else "调试已结束",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(360.dp)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(state.logs, key = { it.id }) { item ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    formatDateTime(item.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    item.message,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (state.running) {
+                TextButton(onClick = onStop) { Text("停止调试") }
+            } else {
+                TextButton(onClick = onClose) { Text("关闭") }
+            }
+        },
+        dismissButton = {
+            if (!state.running) {
+                TextButton(onClick = onClose) { Text("清空") }
+            }
+        }
+    )
 }
 
 private fun triggerLabel(entity: AutomationEntity): String =

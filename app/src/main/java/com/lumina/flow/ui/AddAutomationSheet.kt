@@ -376,7 +376,7 @@ fun AddAutomationSheet(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("立即试运行")
+                    Text("调试")
                 }
                 Button(
                     onClick = {
