@@ -1,5 +1,9 @@
 package com.lumina.flow.ui
 
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -7,8 +11,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -41,11 +48,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -68,6 +77,11 @@ private data class EditableAction(
     val rangeEnd: String = "15"
 )
 
+private data class LaunchableApp(
+    val label: String,
+    val packageName: String
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddAutomationSheet(
@@ -75,6 +89,7 @@ fun AddAutomationSheet(
     onSave: (AutomationEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val conditions = remember(entity?.id) {
         AutomationJsonCodec.decodeConditions(entity?.conditionsJson.orEmpty())
     }
@@ -130,6 +145,7 @@ fun AddAutomationSheet(
         }
     }
     var showAddAction by remember { mutableStateOf(false) }
+    var appPickerTargetId by remember { mutableStateOf<Int?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -263,7 +279,8 @@ fun AddAutomationSheet(
                         index = index + 1,
                         action = action,
                         onChange = { updated -> actions[index] = updated },
-                        onDelete = { if (actions.size > 1) actions.removeAt(index) }
+                        onDelete = { if (actions.size > 1) actions.removeAt(index) },
+                        onPickApp = { appPickerTargetId = action.id }
                     )
                 }
                 OutlinedButton(onClick = { showAddAction = true }) {
@@ -358,6 +375,20 @@ fun AddAutomationSheet(
             dismissButton = { TextButton(onClick = { showAddAction = false }) { Text("关闭") } }
         )
     }
+
+    appPickerTargetId?.let { actionId ->
+        AppPickerDialog(
+            context = context,
+            onDismiss = { appPickerTargetId = null },
+            onPick = { app ->
+                val index = actions.indexOfFirst { it.id == actionId }
+                if (index >= 0) {
+                    actions[index] = actions[index].copy(target = app.packageName)
+                }
+                appPickerTargetId = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -400,7 +431,8 @@ private fun ActionEditorCard(
     index: Int,
     action: EditableAction,
     onChange: (EditableAction) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onPickApp: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     Card {
@@ -475,6 +507,9 @@ private fun ActionEditorCard(
                         label = { Text("应用包名") },
                         placeholder = { Text("com.tencent.mm") }
                     )
+                    OutlinedButton(onClick = onPickApp) {
+                        Text("从应用列表选择")
+                    }
                 }
 
                 ActionType.CLOSE_APP -> {
@@ -528,6 +563,64 @@ private fun ActionEditorCard(
     }
 }
 
+@Composable
+private fun AppPickerDialog(
+    context: Context,
+    onDismiss: () -> Unit,
+    onPick: (LaunchableApp) -> Unit
+) {
+    var keyword by remember { mutableStateOf("") }
+    val apps by produceState(initialValue = emptyList<LaunchableApp>(), context) {
+        value = loadLaunchableApps(context)
+    }
+    val filtered = remember(apps, keyword) {
+        if (keyword.isBlank()) {
+            apps
+        } else {
+            val term = keyword.trim().lowercase()
+            apps.filter {
+                it.label.lowercase().contains(term) || it.packageName.lowercase().contains(term)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择应用") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = keyword,
+                    onValueChange = { keyword = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("搜索应用名或包名") }
+                )
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                    items(filtered, key = { it.packageName }) { app ->
+                        OutlinedButton(
+                            onClick = { onPick(app) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(app.label)
+                                Text(
+                                    app.packageName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
 private fun defaultNotificationAction(id: Int) =
     EditableAction(id, ActionType.NOTIFICATION, title = "LuminaFlow", message = "任务已触发")
 
@@ -538,6 +631,32 @@ private fun defaultActionForType(id: Int, type: ActionType): EditableAction =
         ActionType.VIBRATE -> EditableAction(id, type, durationMs = "600")
         else -> EditableAction(id, type)
     }
+
+private fun loadLaunchableApps(context: Context): List<LaunchableApp> {
+    val packageManager = context.packageManager
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.queryIntentActivities(
+            intent,
+            PackageManager.ResolveInfoFlags.of(0)
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.queryIntentActivities(intent, 0)
+    }
+
+    return resolveInfos
+        .mapNotNull { info ->
+            val packageName = info.activityInfo?.packageName ?: return@mapNotNull null
+            val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+            LaunchableApp(
+                label = label.ifBlank { packageName },
+                packageName = packageName
+            )
+        }
+        .distinctBy { it.packageName }
+        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, LaunchableApp::label))
+}
 
 private fun buildEntity(
     original: AutomationEntity?,
