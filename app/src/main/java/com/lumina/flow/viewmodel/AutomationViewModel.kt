@@ -1,22 +1,20 @@
 package com.lumina.flow.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lumina.flow.automation.AutomationActionExecutor
 import com.lumina.flow.automation.AutomationJsonCodec
 import com.lumina.flow.automation.AutomationPlanner
 import com.lumina.flow.automation.AutomationScheduler
 import com.lumina.flow.data.AutomationDao
 import com.lumina.flow.data.AutomationEntity
+import com.lumina.flow.debug.DebugSessionRepository
+import com.lumina.flow.debug.DebugSessionService
 import com.lumina.flow.model.AutomationConditions
-import com.lumina.flow.model.DebugLogEntry
-import com.lumina.flow.model.DebugSessionState
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -28,14 +26,13 @@ import javax.inject.Inject
 class AutomationViewModel @Inject constructor(
     private val dao: AutomationDao,
     private val scheduler: AutomationScheduler,
-    private val executor: AutomationActionExecutor
+    private val debugRepository: DebugSessionRepository,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val automations =
         dao.getAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    private val _debugState = MutableStateFlow(DebugSessionState())
-    val debugState = _debugState.asStateFlow()
-    private var debugJob: Job? = null
+    val debugState = debugRepository.state
 
     fun save(entity: AutomationEntity, onComplete: (String) -> Unit = {}) {
         viewModelScope.launch {
@@ -90,54 +87,18 @@ class AutomationViewModel @Inject constructor(
     }
 
     fun startDebug(entity: AutomationEntity) {
-        debugJob?.cancel()
-        _debugState.value = DebugSessionState(
-            visible = true,
-            title = entity.name.ifBlank { "未命名任务" },
-            running = true,
-            logs = listOf(log("调试开始"))
-        )
-        debugJob = viewModelScope.launch {
-            runCatching {
-                val actions = AutomationJsonCodec.decodeActions(entity.actionsJson)
-                val conditions = AutomationJsonCodec.decodeConditions(entity.conditionsJson)
-                appendDebug("触发器: ${entity.triggerType}")
-                appendDebug("条件: ${describeConditions(conditions)}")
-                if (entity.repeatUntilWindowEnd) {
-                    appendDebug(
-                        "调试模式忽略定时窗口 %02d:%02d -> %02d:%02d，仅演示一轮动作序列".format(
-                            entity.hour ?: 0,
-                            entity.minute ?: 0,
-                            entity.windowEndHour ?: 0,
-                            entity.windowEndMinute ?: 0
-                        )
-                    )
-                }
-                val result = executor.runActions(actions) { message ->
-                    appendDebug(message)
-                }
-                appendDebug("调试完成: $result")
-            }.onFailure { error ->
-                appendDebug("调试失败: ${error.message ?: "未知错误"}")
-            }
-            _debugState.value = _debugState.value.copy(running = false)
-        }
+        DebugSessionService.start(appContext, entity)
     }
 
     fun stopDebug() {
-        debugJob?.cancel()
-        debugJob = null
-        if (_debugState.value.visible) {
-            _debugState.value = _debugState.value.copy(
-                running = false,
-                logs = _debugState.value.logs + log("调试已停止")
-            )
-        }
+        DebugSessionService.stop(appContext)
     }
 
     fun dismissDebug() {
-        stopDebug()
-        _debugState.value = DebugSessionState()
+        if (debugState.value.running) {
+            DebugSessionService.stop(appContext)
+        }
+        debugRepository.clear()
     }
 
     fun delete(entity: AutomationEntity) {
@@ -286,23 +247,4 @@ class AutomationViewModel @Inject constructor(
         )
     )
 
-    private fun appendDebug(message: String) {
-        _debugState.value = _debugState.value.copy(
-            logs = _debugState.value.logs + log(message)
-        )
-    }
-
-    private fun log(message: String) = DebugLogEntry(
-        id = System.nanoTime(),
-        message = message
-    )
-
-    private fun describeConditions(conditions: AutomationConditions): String {
-        val items = buildList {
-            if (conditions.requireCharging) add("充电中")
-            if (conditions.wifiOnly) add("仅 Wi-Fi")
-            conditions.minimumBattery?.let { add("电量 >= $it%") }
-        }
-        return if (items.isEmpty()) "无附加条件" else items.joinToString(" / ")
-    }
 }

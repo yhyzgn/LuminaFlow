@@ -2,6 +2,8 @@ package com.lumina.flow.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.os.Build
@@ -238,6 +240,8 @@ object AccessibilityAutomationBridge {
     @Volatile
     private var service: LuminaAccessibilityService? = null
 
+    private const val SERVICE_CLASS_NAME = "com.lumina.flow.accessibility.LuminaAccessibilityService"
+
     fun attach(service: LuminaAccessibilityService) {
         this.service = service
     }
@@ -246,7 +250,25 @@ object AccessibilityAutomationBridge {
         if (this.service === service) this.service = null
     }
 
-    fun isEnabled(): Boolean = service != null
+    fun isEnabled(context: Context): Boolean {
+        if (service != null) return true
+
+        val enabled = runCatching {
+            Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.ACCESSIBILITY_ENABLED
+            ) == 1
+        }.getOrDefault(false)
+        if (!enabled) return false
+
+        val enabledServices = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+
+        val target = ComponentName(context, SERVICE_CLASS_NAME).flattenToString()
+        return enabledServices.split(':').any { it.equals(target, ignoreCase = true) }
+    }
 
     suspend fun goHome(): Boolean = service?.performHomeAction() == true
 

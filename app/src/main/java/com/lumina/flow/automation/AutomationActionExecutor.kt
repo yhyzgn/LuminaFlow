@@ -93,7 +93,7 @@ class AutomationActionExecutor @Inject constructor(
                 logger?.invoke("已尝试启动应用: ${action.target}")
             }
             ActionType.GO_HOME -> {
-                val success = if (AccessibilityAutomationBridge.isEnabled()) {
+                val success = if (AccessibilityAutomationBridge.isEnabled(context)) {
                     logger?.invoke("无障碍 HOME 已启用，执行全局返回桌面")
                     AccessibilityAutomationBridge.goHome()
                 } else {
@@ -104,7 +104,7 @@ class AutomationActionExecutor @Inject constructor(
                 logger?.invoke(if (success) "已回到桌面" else "回到桌面失败")
             }
             ActionType.CLOSE_APP -> {
-                val success = if (AccessibilityAutomationBridge.isEnabled()) {
+                val success = if (AccessibilityAutomationBridge.isEnabled(context)) {
                     logger?.invoke("无障碍已启用，尝试强行停止应用: ${action.target}")
                     AccessibilityAutomationBridge.forceStopPackage(action.target)
                 } else {
