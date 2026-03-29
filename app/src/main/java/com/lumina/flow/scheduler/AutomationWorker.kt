@@ -26,10 +26,12 @@ import com.lumina.flow.automation.AutomationScheduler
 import com.lumina.flow.data.AutomationDao
 import com.lumina.flow.model.ActionType
 import com.lumina.flow.model.AutomationActionConfig
+import kotlinx.coroutines.delay
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
 @HiltWorker
 class AutomationWorker @AssistedInject constructor(
@@ -63,7 +65,7 @@ class AutomationWorker @AssistedInject constructor(
 
         ensureChannels()
         val actions = AutomationJsonCodec.decodeActions(entity.actionsJson)
-        val resultLabel = runActions(actions)
+        val resultLabel = runTaskWindow(entity, actions)
         val now = System.currentTimeMillis()
         val nextRunAt = if (manual) entity.nextRunAt else AutomationPlanner.computeNextRun(entity, now)
 
@@ -88,7 +90,22 @@ class AutomationWorker @AssistedInject constructor(
         return true
     }
 
-    private fun runActions(actions: List<AutomationActionConfig>): String {
+    private suspend fun runTaskWindow(
+        entity: com.lumina.flow.data.AutomationEntity,
+        actions: List<AutomationActionConfig>
+    ): String {
+        if (!entity.repeatUntilWindowEnd) return runActions(actions)
+
+        val endTime = AutomationPlanner.computeWindowEnd(entity, System.currentTimeMillis())
+            ?: return "循环窗口无效"
+        val statuses = mutableListOf<String>()
+        while (System.currentTimeMillis() < endTime) {
+            statuses += runActions(actions)
+        }
+        return statuses.lastOrNull() ?: "窗口内无动作执行"
+    }
+
+    private suspend fun runActions(actions: List<AutomationActionConfig>): String {
         if (actions.isEmpty()) return "无动作可执行"
 
         val statuses = actions.map { action ->
@@ -101,11 +118,13 @@ class AutomationWorker @AssistedInject constructor(
         return statuses.joinToString("，")
     }
 
-    private fun executeAction(action: AutomationActionConfig) {
+    private suspend fun executeAction(action: AutomationActionConfig) {
         when (action.type) {
             ActionType.NOTIFICATION -> showActionNotification(action)
             ActionType.OPEN_URL -> openUri(action.target)
             ActionType.OPEN_APP -> openApp(action.target)
+            ActionType.CLOSE_APP -> goHome()
+            ActionType.RANDOM_DELAY -> randomDelay(action)
             ActionType.CLIPBOARD -> copyToClipboard(action.message.ifBlank { action.target })
             ActionType.VIBRATE -> vibrate(action.durationMs)
         }
@@ -159,6 +178,21 @@ class AutomationWorker @AssistedInject constructor(
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             ?: return
         applicationContext.startActivity(launchIntent)
+    }
+
+    private fun goHome() {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        applicationContext.startActivity(intent)
+    }
+
+    private suspend fun randomDelay(action: AutomationActionConfig) {
+        val start = action.rangeStart.coerceAtLeast(0L)
+        val end = action.rangeEnd.coerceAtLeast(start)
+        val seconds = if (end <= start) start else Random.nextLong(start, end + 1)
+        delay(seconds * 1000L)
     }
 
     private fun copyToClipboard(text: String) {

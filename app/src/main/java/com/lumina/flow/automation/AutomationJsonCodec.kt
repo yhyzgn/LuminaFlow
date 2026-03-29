@@ -20,7 +20,9 @@ object AutomationJsonCodec {
                             title = item.optString("title"),
                             message = item.optString("message"),
                             target = item.optString("target"),
-                            durationMs = item.optLong("durationMs", 600L)
+                            durationMs = item.optLong("durationMs", 600L),
+                            rangeStart = item.optLong("rangeStart", 0L),
+                            rangeEnd = item.optLong("rangeEnd", 0L)
                         )
                     )
                 }
@@ -38,6 +40,8 @@ object AutomationJsonCodec {
                     .put("message", action.message)
                     .put("target", action.target)
                     .put("durationMs", action.durationMs)
+                    .put("rangeStart", action.rangeStart)
+                    .put("rangeEnd", action.rangeEnd)
             )
         }
         return array.toString()

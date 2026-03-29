@@ -15,6 +15,8 @@ enum class ActionType(val value: String, val label: String) {
     NOTIFICATION("NOTIFICATION", "通知"),
     OPEN_URL("OPEN_URL", "打开链接"),
     OPEN_APP("OPEN_APP", "启动应用"),
+    CLOSE_APP("CLOSE_APP", "关闭应用到桌面"),
+    RANDOM_DELAY("RANDOM_DELAY", "随机延迟"),
     CLIPBOARD("CLIPBOARD", "复制文本"),
     VIBRATE("VIBRATE", "振动");
 
@@ -29,7 +31,9 @@ data class AutomationActionConfig(
     val title: String = "",
     val message: String = "",
     val target: String = "",
-    val durationMs: Long = 600L
+    val durationMs: Long = 600L,
+    val rangeStart: Long = 0L,
+    val rangeEnd: Long = 0L
 )
 
 data class AutomationConditions(

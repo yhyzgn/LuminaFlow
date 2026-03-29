@@ -63,7 +63,9 @@ private data class EditableAction(
     val title: String = "",
     val message: String = "",
     val target: String = "",
-    val durationMs: String = "600"
+    val durationMs: String = "600",
+    val rangeStart: String = "3",
+    val rangeEnd: String = "15"
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -84,6 +86,11 @@ fun AddAutomationSheet(
     }
     var hour by rememberSaveable(entity?.id) { mutableIntStateOf(entity?.hour ?: 8) }
     var minute by rememberSaveable(entity?.id) { mutableIntStateOf(entity?.minute ?: 0) }
+    var repeatUntilWindowEnd by rememberSaveable(entity?.id) {
+        mutableStateOf(entity?.repeatUntilWindowEnd ?: false)
+    }
+    var windowEndHour by rememberSaveable(entity?.id) { mutableIntStateOf(entity?.windowEndHour ?: 9) }
+    var windowEndMinute by rememberSaveable(entity?.id) { mutableIntStateOf(entity?.windowEndMinute ?: 0) }
     var intervalMinutes by rememberSaveable(entity?.id) {
         mutableStateOf(entity?.intervalMinutes?.toString() ?: "60")
     }
@@ -93,6 +100,7 @@ fun AddAutomationSheet(
     var requireCharging by rememberSaveable(entity?.id) { mutableStateOf(conditions.requireCharging) }
     var wifiOnly by rememberSaveable(entity?.id) { mutableStateOf(conditions.wifiOnly) }
     var minimumBattery by rememberSaveable(entity?.id) { mutableStateOf(conditions.minimumBattery?.toString() ?: "") }
+
     val selectedDays = remember(entity?.id) {
         mutableStateListOf<Int>().apply {
             addAll(AutomationPlanner.decodeDays(entity?.daysOfWeek.orEmpty()))
@@ -102,7 +110,7 @@ fun AddAutomationSheet(
         mutableStateListOf<EditableAction>().apply {
             val decoded = AutomationJsonCodec.decodeActions(entity?.actionsJson.orEmpty())
             if (decoded.isEmpty()) {
-                add(EditableAction(1, ActionType.NOTIFICATION, title = "LuminaFlow", message = "任务已触发"))
+                add(defaultNotificationAction(1))
             } else {
                 decoded.forEachIndexed { index, action ->
                     add(
@@ -112,7 +120,9 @@ fun AddAutomationSheet(
                             title = action.title,
                             message = action.message,
                             target = action.target,
-                            durationMs = action.durationMs.toString()
+                            durationMs = action.durationMs.toString(),
+                            rangeStart = action.rangeStart.toString(),
+                            rangeEnd = action.rangeEnd.toString()
                         )
                     )
                 }
@@ -150,10 +160,7 @@ fun AddAutomationSheet(
                     label = { Text("描述") },
                     minLines = 2
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("启用任务", modifier = Modifier.weight(1f))
-                    Switch(checked = enabled, onCheckedChange = { enabled = it })
-                }
+                SwitchRow("启用任务", enabled) { enabled = it }
             }
 
             Section("触发方式") {
@@ -181,20 +188,12 @@ fun AddAutomationSheet(
                 when (triggerType) {
                     TriggerType.TIME -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            NumberField(
-                                label = "小时",
-                                value = hour.toString(),
-                                hint = "0-23",
-                                onValueChange = { value -> hour = value.toIntOrNull()?.coerceIn(0, 23) ?: hour },
-                                modifier = Modifier.weight(1f)
-                            )
-                            NumberField(
-                                label = "分钟",
-                                value = minute.toString(),
-                                hint = "0-59",
-                                onValueChange = { value -> minute = value.toIntOrNull()?.coerceIn(0, 59) ?: minute },
-                                modifier = Modifier.weight(1f)
-                            )
+                            NumberField("开始小时", hour.toString(), "0-23", { value ->
+                                hour = value.toIntOrNull()?.coerceIn(0, 23) ?: hour
+                            }, Modifier.weight(1f))
+                            NumberField("开始分钟", minute.toString(), "0-59", { value ->
+                                minute = value.toIntOrNull()?.coerceIn(0, 59) ?: minute
+                            }, Modifier.weight(1f))
                         }
                         Text("重复日期", style = MaterialTheme.typography.labelLarge)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -214,31 +213,39 @@ fun AddAutomationSheet(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        SwitchRow("在截止时间前循环执行动作序列", repeatUntilWindowEnd) {
+                            repeatUntilWindowEnd = it
+                        }
+                        if (repeatUntilWindowEnd) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                NumberField("截止小时", windowEndHour.toString(), "0-23", { value ->
+                                    windowEndHour = value.toIntOrNull()?.coerceIn(0, 23) ?: windowEndHour
+                                }, Modifier.weight(1f))
+                                NumberField("截止分钟", windowEndMinute.toString(), "0-59", { value ->
+                                    windowEndMinute = value.toIntOrNull()?.coerceIn(0, 59) ?: windowEndMinute
+                                }, Modifier.weight(1f))
+                            }
+                            Text(
+                                "例如 08:30 启动后，在 09:00 前不断重复执行这组动作。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
+
                     TriggerType.INTERVAL -> {
                         NumberField(
-                            label = "间隔分钟",
-                            value = intervalMinutes,
-                            hint = "例如 30 / 90 / 240",
-                            onValueChange = { intervalMinutes = it },
-                            modifier = Modifier.fillMaxWidth()
+                            "间隔分钟",
+                            intervalMinutes,
+                            "例如 30 / 90 / 240",
+                            { intervalMinutes = it },
+                            Modifier.fillMaxWidth()
                         )
                     }
+
                     TriggerType.LOCATION -> {
-                        NumberField(
-                            label = "纬度",
-                            value = latitude,
-                            hint = "如 31.2304",
-                            onValueChange = { latitude = it },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        NumberField(
-                            label = "经度",
-                            value = longitude,
-                            hint = "如 121.4737",
-                            onValueChange = { longitude = it },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        NumberField("纬度", latitude, "如 31.2304", { latitude = it }, Modifier.fillMaxWidth())
+                        NumberField("经度", longitude, "如 121.4737", { longitude = it }, Modifier.fillMaxWidth())
                         Text("半径 ${radius.toInt()} 米")
                         Slider(value = radius, onValueChange = { radius = it }, valueRange = 50f..1000f)
                         Text(
@@ -269,19 +276,14 @@ fun AddAutomationSheet(
             Section("执行条件") {
                 SwitchRow("仅充电时执行", requireCharging) { requireCharging = it }
                 SwitchRow("仅 Wi-Fi 下执行", wifiOnly) { wifiOnly = it }
-                NumberField(
-                    label = "最低电量",
-                    value = minimumBattery,
-                    hint = "留空表示不限制",
-                    onValueChange = { minimumBattery = it },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                NumberField("最低电量", minimumBattery, "留空表示不限制", { minimumBattery = it }, Modifier.fillMaxWidth())
             }
 
             Section("预览") {
-                Text(previewLabel(triggerType, hour, minute, intervalMinutes))
+                Text(previewLabel(triggerType, hour, minute, repeatUntilWindowEnd, windowEndHour, windowEndMinute, intervalMinutes))
                 Text(
-                    "动作数 ${actions.size}，保存后自动计算下次执行时间。",
+                    if (repeatUntilWindowEnd) "循环任务建议至少包含一个随机延迟动作，避免高频空转。"
+                    else "保存后会自动计算下次执行时间。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -303,6 +305,9 @@ fun AddAutomationSheet(
                             triggerType = triggerType,
                             hour = hour,
                             minute = minute,
+                            repeatUntilWindowEnd = repeatUntilWindowEnd,
+                            windowEndHour = windowEndHour,
+                            windowEndMinute = windowEndMinute,
                             intervalMinutes = intervalMinutes,
                             selectedDays = selectedDays.toSet(),
                             latitude = latitude,
@@ -313,7 +318,13 @@ fun AddAutomationSheet(
                             wifiOnly = wifiOnly,
                             minimumBattery = minimumBattery
                         )
-                        if (built == null) error = "请补全当前触发器需要的关键字段" else onSave(built)
+                        error = when {
+                            built == null -> "请补全当前触发器需要的关键字段"
+                            repeatUntilWindowEnd && actions.none { it.type == ActionType.RANDOM_DELAY } ->
+                                "循环任务至少加一个随机延迟动作，避免无间隔高速循环"
+                            else -> null
+                        }
+                        if (error == null && built != null) onSave(built)
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -333,7 +344,7 @@ fun AddAutomationSheet(
                         OutlinedButton(
                             onClick = {
                                 val nextId = (actions.maxOfOrNull { it.id } ?: 0) + 1
-                                actions.add(EditableAction(nextId, type))
+                                actions.add(defaultActionForType(nextId, type))
                                 showAddAction = false
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -405,9 +416,7 @@ private fun ActionEditorCard(
                 OutlinedTextField(
                     value = action.type.label,
                     onValueChange = {},
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(),
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
                     readOnly = true,
                     label = { Text("动作类型") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
@@ -417,7 +426,14 @@ private fun ActionEditorCard(
                         DropdownMenuItem(
                             text = { Text(type.label) },
                             onClick = {
-                                onChange(action.copy(type = type))
+                                onChange(defaultActionForType(action.id, type).copy(
+                                    title = if (type == action.type) action.title else defaultActionForType(action.id, type).title,
+                                    message = if (type == action.type) action.message else defaultActionForType(action.id, type).message,
+                                    target = if (type == action.type) action.target else defaultActionForType(action.id, type).target,
+                                    durationMs = if (type == action.type) action.durationMs else defaultActionForType(action.id, type).durationMs,
+                                    rangeStart = if (type == action.type) action.rangeStart else defaultActionForType(action.id, type).rangeStart,
+                                    rangeEnd = if (type == action.type) action.rangeEnd else defaultActionForType(action.id, type).rangeEnd
+                                ))
                                 expanded = false
                             }
                         )
@@ -440,6 +456,7 @@ private fun ActionEditorCard(
                         label = { Text("通知内容") }
                     )
                 }
+
                 ActionType.OPEN_URL -> {
                     OutlinedTextField(
                         value = action.target,
@@ -449,6 +466,7 @@ private fun ActionEditorCard(
                         placeholder = { Text("https://example.com") }
                     )
                 }
+
                 ActionType.OPEN_APP -> {
                     OutlinedTextField(
                         value = action.target,
@@ -458,6 +476,34 @@ private fun ActionEditorCard(
                         placeholder = { Text("com.tencent.mm") }
                     )
                 }
+
+                ActionType.CLOSE_APP -> {
+                    Text(
+                        "当前实现为退回桌面，避免伪造“强杀应用”能力。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                ActionType.RANDOM_DELAY -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        NumberField(
+                            "最小秒数",
+                            action.rangeStart,
+                            "例如 3",
+                            { onChange(action.copy(rangeStart = it)) },
+                            Modifier.weight(1f)
+                        )
+                        NumberField(
+                            "最大秒数",
+                            action.rangeEnd,
+                            "例如 18",
+                            { onChange(action.copy(rangeEnd = it)) },
+                            Modifier.weight(1f)
+                        )
+                    }
+                }
+
                 ActionType.CLIPBOARD -> {
                     OutlinedTextField(
                         value = action.message,
@@ -467,19 +513,31 @@ private fun ActionEditorCard(
                         minLines = 2
                     )
                 }
+
                 ActionType.VIBRATE -> {
                     NumberField(
-                        label = "振动时长(ms)",
-                        value = action.durationMs,
-                        hint = "建议 300-1200",
-                        onValueChange = { onChange(action.copy(durationMs = it)) },
-                        modifier = Modifier.fillMaxWidth()
+                        "振动时长(ms)",
+                        action.durationMs,
+                        "建议 300-1200",
+                        { onChange(action.copy(durationMs = it)) },
+                        Modifier.fillMaxWidth()
                     )
                 }
             }
         }
     }
 }
+
+private fun defaultNotificationAction(id: Int) =
+    EditableAction(id, ActionType.NOTIFICATION, title = "LuminaFlow", message = "任务已触发")
+
+private fun defaultActionForType(id: Int, type: ActionType): EditableAction =
+    when (type) {
+        ActionType.NOTIFICATION -> defaultNotificationAction(id)
+        ActionType.RANDOM_DELAY -> EditableAction(id, type, rangeStart = "3", rangeEnd = "15")
+        ActionType.VIBRATE -> EditableAction(id, type, durationMs = "600")
+        else -> EditableAction(id, type)
+    }
 
 private fun buildEntity(
     original: AutomationEntity?,
@@ -489,6 +547,9 @@ private fun buildEntity(
     triggerType: TriggerType,
     hour: Int,
     minute: Int,
+    repeatUntilWindowEnd: Boolean,
+    windowEndHour: Int,
+    windowEndMinute: Int,
     intervalMinutes: String,
     selectedDays: Set<Int>,
     latitude: String,
@@ -507,7 +568,9 @@ private fun buildEntity(
             title = it.title.trim(),
             message = it.message.trim(),
             target = it.target.trim(),
-            durationMs = it.durationMs.toLongOrNull() ?: 600L
+            durationMs = it.durationMs.toLongOrNull() ?: 600L,
+            rangeStart = it.rangeStart.toLongOrNull() ?: 0L,
+            rangeEnd = it.rangeEnd.toLongOrNull() ?: 0L
         )
     }
     if (builtActions.isEmpty()) return null
@@ -518,6 +581,9 @@ private fun buildEntity(
         TriggerType.LOCATION -> latitude.toDoubleOrNull() != null && longitude.toDoubleOrNull() != null
     }
     if (!triggerValid) return null
+    if (repeatUntilWindowEnd && triggerType != TriggerType.TIME) return null
+    if (repeatUntilWindowEnd && (windowEndHour < hour || (windowEndHour == hour && windowEndMinute <= minute))) return null
+    if (repeatUntilWindowEnd && builtActions.none { it.type == ActionType.RANDOM_DELAY }) return null
 
     return AutomationEntity(
         id = original?.id ?: 0L,
@@ -527,6 +593,9 @@ private fun buildEntity(
         hour = if (triggerType == TriggerType.TIME) hour else null,
         minute = if (triggerType == TriggerType.TIME) minute else null,
         daysOfWeek = if (triggerType == TriggerType.TIME) AutomationPlanner.encodeDays(selectedDays) else "",
+        repeatUntilWindowEnd = triggerType == TriggerType.TIME && repeatUntilWindowEnd,
+        windowEndHour = if (triggerType == TriggerType.TIME && repeatUntilWindowEnd) windowEndHour else null,
+        windowEndMinute = if (triggerType == TriggerType.TIME && repeatUntilWindowEnd) windowEndMinute else null,
         intervalMinutes = if (triggerType == TriggerType.INTERVAL) intervalMinutes.toIntOrNull() else null,
         latitude = if (triggerType == TriggerType.LOCATION) latitude.toDoubleOrNull() else null,
         longitude = if (triggerType == TriggerType.LOCATION) longitude.toDoubleOrNull() else null,
@@ -551,9 +620,18 @@ private fun previewLabel(
     triggerType: TriggerType,
     hour: Int,
     minute: Int,
+    repeatUntilWindowEnd: Boolean,
+    windowEndHour: Int,
+    windowEndMinute: Int,
     intervalMinutes: String
 ): String = when (triggerType) {
-    TriggerType.TIME -> "每天 %02d:%02d".format(hour, minute)
+    TriggerType.TIME -> {
+        if (repeatUntilWindowEnd) {
+            "每天 %02d:%02d 启动，循环到 %02d:%02d".format(hour, minute, windowEndHour, windowEndMinute)
+        } else {
+            "每天 %02d:%02d".format(hour, minute)
+        }
+    }
     TriggerType.INTERVAL -> "每 ${intervalMinutes.ifBlank { "?" }} 分钟轮询一次"
     TriggerType.LOCATION -> "进入指定半径范围时触发"
 }

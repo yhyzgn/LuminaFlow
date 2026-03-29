@@ -34,6 +34,20 @@ object AutomationPlanner {
     fun encodeDays(days: Set<Int>): String =
         days.sorted().joinToString(",")
 
+    fun computeWindowEnd(entity: AutomationEntity, referenceTime: Long): Long? {
+        if (!entity.repeatUntilWindowEnd) return null
+        val endHour = entity.windowEndHour ?: return null
+        val endMinute = entity.windowEndMinute ?: return null
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = referenceTime
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            set(Calendar.HOUR_OF_DAY, endHour)
+            set(Calendar.MINUTE, endMinute)
+        }
+        return calendar.timeInMillis.takeIf { it > referenceTime }
+    }
+
     private fun computeNextTimeRun(
         hour: Int?,
         minute: Int?,

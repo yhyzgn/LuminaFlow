@@ -273,6 +273,24 @@ private fun TemplateSection(onUseTemplate: (AutomationEntity) -> Unit) {
                 )
             ),
             AutomationEntity(
+                name = "随机开关应用窗口",
+                description = "08:30 到 09:00 内随机等待后打开应用，再随机等待后退回桌面",
+                triggerType = TriggerType.TIME.value,
+                hour = 8,
+                minute = 30,
+                repeatUntilWindowEnd = true,
+                windowEndHour = 9,
+                windowEndMinute = 0,
+                actionsJson = AutomationJsonCodec.encodeActions(
+                    listOf(
+                        AutomationActionConfig(ActionType.RANDOM_DELAY, rangeStart = 5, rangeEnd = 25),
+                        AutomationActionConfig(ActionType.OPEN_APP, target = "com.tencent.mm"),
+                        AutomationActionConfig(ActionType.RANDOM_DELAY, rangeStart = 6, rangeEnd = 20),
+                        AutomationActionConfig(ActionType.CLOSE_APP)
+                    )
+                )
+            ),
+            AutomationEntity(
                 name = "下班收尾",
                 description = "18:45 复制日报模板到剪贴板",
                 triggerType = TriggerType.TIME.value,
@@ -418,7 +436,12 @@ private fun triggerLabel(entity: AutomationEntity): String =
         TriggerType.TIME -> {
             val time = "%02d:%02d".format(entity.hour ?: 0, entity.minute ?: 0)
             val days = AutomationPlanner.decodeDays(entity.daysOfWeek)
-            if (days.isEmpty()) "每日 $time" else "${daysLabel(days)} $time"
+            val prefix = if (days.isEmpty()) "每日 $time" else "${daysLabel(days)} $time"
+            if (entity.repeatUntilWindowEnd && entity.windowEndHour != null && entity.windowEndMinute != null) {
+                "$prefix -> %02d:%02d 循环结束".format(entity.windowEndHour, entity.windowEndMinute)
+            } else {
+                prefix
+            }
         }
         TriggerType.INTERVAL -> "每 ${entity.intervalMinutes ?: 0} 分钟"
         TriggerType.LOCATION -> "地理围栏"

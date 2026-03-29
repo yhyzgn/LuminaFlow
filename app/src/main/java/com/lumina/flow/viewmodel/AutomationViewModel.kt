@@ -113,7 +113,9 @@ class AutomationViewModel @Inject constructor(
                                         title = action["title"] as? String ?: "",
                                         message = action["message"] as? String ?: "",
                                         target = action["target"] as? String ?: "",
-                                        durationMs = (action["durationMs"] as? Number)?.toLong() ?: 600L
+                                        durationMs = (action["durationMs"] as? Number)?.toLong() ?: 600L,
+                                        rangeStart = (action["rangeStart"] as? Number)?.toLong() ?: 0L,
+                                        rangeEnd = (action["rangeEnd"] as? Number)?.toLong() ?: 0L
                                     )
                                 }
                             )
@@ -133,6 +135,9 @@ class AutomationViewModel @Inject constructor(
                             hour = (map["hour"] as? Number)?.toInt(),
                             minute = (map["minute"] as? Number)?.toInt(),
                             daysOfWeek = map["daysOfWeek"] as? String ?: "",
+                            repeatUntilWindowEnd = map["repeatUntilWindowEnd"] as? Boolean ?: false,
+                            windowEndHour = (map["windowEndHour"] as? Number)?.toInt(),
+                            windowEndMinute = (map["windowEndMinute"] as? Number)?.toInt(),
                             intervalMinutes = (map["intervalMinutes"] as? Number)?.toInt(),
                             latitude = (map["latitude"] as? Number)?.toDouble(),
                             longitude = (map["longitude"] as? Number)?.toDouble(),
@@ -169,12 +174,15 @@ class AutomationViewModel @Inject constructor(
                         "name" to entity.name,
                         "description" to entity.description,
                         "triggerType" to entity.triggerType,
-                        "hour" to entity.hour,
-                        "minute" to entity.minute,
-                        "daysOfWeek" to entity.daysOfWeek,
-                        "intervalMinutes" to entity.intervalMinutes,
-                        "latitude" to entity.latitude,
-                        "longitude" to entity.longitude,
+                                "hour" to entity.hour,
+                                "minute" to entity.minute,
+                                "daysOfWeek" to entity.daysOfWeek,
+                                "repeatUntilWindowEnd" to entity.repeatUntilWindowEnd,
+                                "windowEndHour" to entity.windowEndHour,
+                                "windowEndMinute" to entity.windowEndMinute,
+                                "intervalMinutes" to entity.intervalMinutes,
+                                "latitude" to entity.latitude,
+                                "longitude" to entity.longitude,
                         "radius" to entity.radius,
                         "enabled" to entity.enabled,
                         "actions" to AutomationJsonCodec.decodeActions(entity.actionsJson).map { action ->
@@ -183,7 +191,9 @@ class AutomationViewModel @Inject constructor(
                                 "title" to action.title,
                                 "message" to action.message,
                                 "target" to action.target,
-                                "durationMs" to action.durationMs
+                                "durationMs" to action.durationMs,
+                                "rangeStart" to action.rangeStart,
+                                "rangeEnd" to action.rangeEnd
                             )
                         },
                         "conditions" to AutomationJsonCodec.decodeConditions(entity.conditionsJson).let { conditions ->
